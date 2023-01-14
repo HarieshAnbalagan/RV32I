@@ -1,5 +1,3 @@
 # RISC-V
 
-![Single Core Processor][def]
-
-[def]: ./doc/images/Pipelined_processor.png
+![Single Core Processor](/doc/images/Pipelined_processor.png)
