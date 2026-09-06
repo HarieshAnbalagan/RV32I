@@ -23,7 +23,13 @@ module ProcessorCore
     output logic            write_enable_o,
     output logic [31:0]     write_data_o,
     output logic [3:0]      write_data_strobe_o,
-    output logic [31:0]     address_o
+    output logic [31:0]     address_o,
+    output logic            retire_valid_o,
+    output logic [31:0]     retire_pc_o,
+    output logic [31:0]     retire_instruction_o,
+    output logic            retire_reg_write_o,
+    output logic [4:0]      retire_rd_o,
+    output logic [31:0]     retire_rd_value_o
 );
 
 ///////////////////////////////////////////////////////////////
@@ -137,6 +143,76 @@ module ProcessorCore
     logic [1:0]reg_source_1_data_sel;
     logic [1:0]reg_source_2_data_sel;
     logic [XLEN-1:0]reg_data;
+    logic valid_if_id;
+    logic valid_id_ex;
+    logic valid_ex_dm;
+    logic valid_dm_wb;
+    logic [XLEN-1:0] instruction_ex;
+    logic [XLEN-1:0] instruction_dm;
+    logic [XLEN-1:0] instruction_wb;
+    logic [ADDR_WIDTH-1:0] pc_dm;
+    logic [ADDR_WIDTH-1:0] pc_wb;
+    logic retire_is_supported;
+
+    always_comb
+    begin
+        retire_is_supported = 1'b0;
+        unique case (instruction_wb[6:0])
+            OP_R_TYPE:
+                retire_is_supported =
+                    ((instruction_wb[14:12] == 3'b000) &&
+                     ((instruction_wb[31:25] == 7'b0000000) ||
+                      (instruction_wb[31:25] == 7'b0100000))) ||
+                    ((instruction_wb[14:12] == 3'b001) &&
+                     (instruction_wb[31:25] == 7'b0000000)) ||
+                    ((instruction_wb[14:12] == 3'b010) &&
+                     (instruction_wb[31:25] == 7'b0000000)) ||
+                    ((instruction_wb[14:12] == 3'b011) &&
+                     (instruction_wb[31:25] == 7'b0000000)) ||
+                    ((instruction_wb[14:12] == 3'b100) &&
+                     (instruction_wb[31:25] == 7'b0000000)) ||
+                    ((instruction_wb[14:12] == 3'b101) &&
+                     ((instruction_wb[31:25] == 7'b0000000) ||
+                      (instruction_wb[31:25] == 7'b0100000))) ||
+                    ((instruction_wb[14:12] == 3'b110) &&
+                     (instruction_wb[31:25] == 7'b0000000)) ||
+                    ((instruction_wb[14:12] == 3'b111) &&
+                     (instruction_wb[31:25] == 7'b0000000));
+            OP_I_ALU_TYPE:
+                retire_is_supported =
+                    (instruction_wb[14:12] == 3'b000) ||
+                    (instruction_wb[14:12] == 3'b010) ||
+                    (instruction_wb[14:12] == 3'b011) ||
+                    (instruction_wb[14:12] == 3'b100) ||
+                    (instruction_wb[14:12] == 3'b110) ||
+                    (instruction_wb[14:12] == 3'b111) ||
+                    ((instruction_wb[14:12] == 3'b001) &&
+                     (instruction_wb[31:25] == 7'b0000000)) ||
+                    ((instruction_wb[14:12] == 3'b101) &&
+                     ((instruction_wb[31:25] == 7'b0000000) ||
+                      (instruction_wb[31:25] == 7'b0100000)));
+            OP_U_LUI_TYPE, OP_U_AUIPC_TYPE:
+                retire_is_supported = 1'b1;
+            OP_B_TYPE:
+                retire_is_supported =
+                    (instruction_wb[14:12] == 3'b000) ||
+                    (instruction_wb[14:12] == 3'b001) ||
+                    (instruction_wb[14:12] == 3'b100) ||
+                    (instruction_wb[14:12] == 3'b101) ||
+                    (instruction_wb[14:12] == 3'b110) ||
+                    (instruction_wb[14:12] == 3'b111);
+            OP_J_TYPE:
+                retire_is_supported = 1'b1;
+            OP_I_JALR_TYPE:
+                retire_is_supported = (instruction_wb[14:12] == 3'b000);
+            OP_I_LOAD_TYPE:
+                retire_is_supported = (instruction_wb[14:12] == 3'b010);
+            OP_S_TYPE:
+                retire_is_supported = (instruction_wb[14:12] == 3'b010);
+            default:
+                retire_is_supported = 1'b0;
+        endcase
+    end
 
 ///////////////////////////////////////////////////////////////
 //                 INSTRUCTION FETCH STAGE                   //
@@ -155,7 +231,11 @@ module ProcessorCore
         end
     end
     
-    assign pc_update_if = branch_enable ? alu_output_ex : pc_next_if;
+     assign pc_update_if = branch_enable
+                                ? ((instruction_ex[6:0] == OP_I_JALR_TYPE)
+                                    ? {alu_output_ex[31:1], 1'b0}
+                                    : alu_output_ex)
+                                : pc_next_if;
     
     always_ff @(posedge clk_i, posedge reset_i)
     begin
@@ -180,6 +260,7 @@ module ProcessorCore
     begin
         if (clear_if_id | reset_i)
         begin
+            valid_if_id <= 1'b0;
             PC_id <= {ADDR_WIDTH{1'b0}};
             pc_next_id <= {ADDR_WIDTH{1'b0}};
             instruction_id <= {XLEN{1'b0}};
@@ -189,6 +270,7 @@ module ProcessorCore
         end
         else if(~stall_if_id)
         begin
+            valid_if_id <= 1'b1;
             PC_id <= PC_if;
             pc_next_id <= pc_next_if;
             instruction_id <= instruction_if;
@@ -246,6 +328,8 @@ module ProcessorCore
     begin
         if (clear_id_ex | reset_i)
         begin
+            valid_id_ex <= 1'b0;
+            instruction_ex <= {XLEN{1'b0}};
             PC_ex <= {ADDR_WIDTH{1'b0}};
             pc_next_ex <= {ADDR_WIDTH{1'b0}};
             reg_source_1_addr_ex <= {REG_ADDR_WIDTH{1'b0}};
@@ -267,6 +351,8 @@ module ProcessorCore
         end
         else if(~stall_if_id)
         begin
+            valid_id_ex <= valid_if_id;
+            instruction_ex <= instruction_id;
             PC_ex <= PC_id;
             pc_next_ex <= pc_next_id;
             reg_source_1_addr_ex <= reg_source_1_addr_id;
@@ -332,19 +418,31 @@ module ProcessorCore
 //             EXECUTE / DATA MEMORY INTERFACE               //
 ///////////////////////////////////////////////////////////////
 
-    always_ff @(posedge clk_i)
+    always_ff @(posedge clk_i, posedge reset_i)
     begin
-        pc_next_dm <= pc_next_ex;
-        reg_destination_addr_dm <= reg_destination_addr_ex;
-        immediate_dm <= immediate_ex;
-        reg_source_2_data_dm <= reg_source_2_data;
-        write_data_unaligned_dm <= reg_source_2_data;
-        alu_output_dm <= alu_output_ex;
-        comp_output_dm <= comp_output_ex;
-        load_store_type_dm <= load_store_type_ex;
-        reg_write_enable_dm <= reg_write_enable_ex;
-        data_memory_write_enable_dm <= data_memory_write_enable_ex;
-        reg_write_data_sel_dm <= reg_write_data_sel_ex;
+        if (reset_i)
+        begin
+            valid_ex_dm <= 1'b0;
+            instruction_dm <= {XLEN{1'b0}};
+            pc_dm <= {ADDR_WIDTH{1'b0}};
+        end
+        else
+        begin
+            valid_ex_dm <= valid_id_ex;
+            instruction_dm <= instruction_ex;
+            pc_dm <= PC_ex;
+            pc_next_dm <= pc_next_ex;
+            reg_destination_addr_dm <= reg_destination_addr_ex;
+            immediate_dm <= immediate_ex;
+            reg_source_2_data_dm <= reg_source_2_data;
+            write_data_unaligned_dm <= reg_source_2_data;
+            alu_output_dm <= alu_output_ex;
+            comp_output_dm <= comp_output_ex;
+            load_store_type_dm <= load_store_type_ex;
+            reg_write_enable_dm <= reg_write_enable_ex;
+            data_memory_write_enable_dm <= data_memory_write_enable_ex;
+            reg_write_data_sel_dm <= reg_write_data_sel_ex;
+        end
     end
 
 ///////////////////////////////////////////////////////////////
@@ -381,13 +479,25 @@ module ProcessorCore
 //             DATA MEMORY / WRITE BACK INTERFACE            //
 ///////////////////////////////////////////////////////////////
 
-    always_ff @(posedge clk_i)
+    always_ff @(posedge clk_i, posedge reset_i)
     begin
-        reg_destination_addr_wb <= reg_destination_addr_dm;
-        reg_write_enable_wb <= reg_write_enable_dm;
-        reg_write_data_sel_wb <= reg_write_data_sel_dm;
-        dmem_data_wb <= dmem_data_dm;
-        reg_data <= reg_data_dm;
+        if (reset_i)
+        begin
+            valid_dm_wb <= 1'b0;
+            instruction_wb <= {XLEN{1'b0}};
+            pc_wb <= {ADDR_WIDTH{1'b0}};
+        end
+        else
+        begin
+            valid_dm_wb <= valid_ex_dm;
+            instruction_wb <= instruction_dm;
+            pc_wb <= pc_dm;
+            reg_destination_addr_wb <= reg_destination_addr_dm;
+            reg_write_enable_wb <= reg_write_enable_dm;
+            reg_write_data_sel_wb <= reg_write_data_sel_dm;
+            dmem_data_wb <= dmem_data_dm;
+            reg_data <= reg_data_dm;
+        end
     end
 
 ///////////////////////////////////////////////////////////////
@@ -395,6 +505,14 @@ module ProcessorCore
 ///////////////////////////////////////////////////////////////
 
     assign reg_data_wb = (reg_write_data_sel_wb == RD_MUX_DMEM) ? dmem_data_wb : reg_data;
+
+    assign retire_valid_o = valid_dm_wb && retire_is_supported;
+    assign retire_pc_o = pc_wb;
+    assign retire_instruction_o = instruction_wb;
+    assign retire_reg_write_o = retire_valid_o && reg_write_enable_wb &&
+                                (reg_destination_addr_wb != 5'd0);
+    assign retire_rd_o = reg_destination_addr_wb;
+    assign retire_rd_value_o = reg_data_wb;
 
 ///////////////////////////////////////////////////////////////
 //               PIPELINE DATA / CONTROL                     //
