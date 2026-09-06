@@ -1,0 +1,66 @@
+# Per-test architectural termination configuration
+
+[L_S_type]
+termination = completion_store
+completion_address = 8
+completion_value = 0000007f
+
+[dep_test]
+termination = instruction_count
+instruction_count = 6
+
+[R_type]
+termination = instruction_count
+instruction_count = 12
+
+[I_ALU_Type]
+termination = instruction_count
+instruction_count = 16
+
+[I_type]
+termination = instruction_count
+instruction_count = 17
+
+[i_test]
+termination = instruction_count
+instruction_count = 17
+
+[U_type]
+termination = instruction_count
+instruction_count = 5
+
+[B_NT_type]
+termination = instruction_count
+instruction_count = 16
+
+[B_T_type]
+termination = instruction_count
+instruction_count = 13
+
+[b_nt_test]
+termination = instruction_count
+instruction_count = 18
+
+[b_t_test]
+termination = instruction_count
+instruction_count = 12
+
+[J_type]
+termination = instruction_count
+instruction_count = 11
+
+[I_JALR_type]
+termination = instruction_count
+instruction_count = 6
+
+[load_test]
+termination = instruction_count
+instruction_count = 8
+
+[r_test]
+termination = instruction_count
+instruction_count = 12
+
+[sra_test]
+termination = instruction_count
+instruction_count = 9

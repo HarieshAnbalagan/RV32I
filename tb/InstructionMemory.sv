@@ -13,11 +13,16 @@ module InstructionMemory
 );
 
     logic [31:0]instruction [63:0];
+    string test_name;
+    string instruction_file;
 
     initial
     begin
-        $readmemh("L_S_type.txt",instruction);
-        //$readmemh("riscvtest.txt",instruction);
+        if (!$value$plusargs("TEST=%s", test_name))
+            test_name = "L_S_type";
+        instruction_file = {test_name, ".txt"};
+        $display("InstructionMemory: loading %s", instruction_file);
+        $readmemh(instruction_file, instruction);
     end
 
     always_comb

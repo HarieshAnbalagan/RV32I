@@ -14,6 +14,16 @@ parameter XLEN = 32;
 parameter ADDR_WIDTH = 32;
 parameter REG_ADDR_WIDTH = 5;
 
+localparam logic [6:0] OP_B_TYPE       = 7'b1100011;
+localparam logic [6:0] OP_I_JALR_TYPE  = 7'b1100111;
+localparam logic [6:0] OP_I_LOAD_TYPE  = 7'b0000011;
+localparam logic [6:0] OP_I_ALU_TYPE   = 7'b0010011;
+localparam logic [6:0] OP_S_TYPE       = 7'b0100011;
+localparam logic [6:0] OP_U_LUI_TYPE   = 7'b0110111;
+localparam logic [6:0] OP_U_AUIPC_TYPE = 7'b0010111;
+localparam logic [6:0] OP_J_TYPE       = 7'b1101111;
+localparam logic [6:0] OP_R_TYPE       = 7'b0110011;
+
 parameter IMM_SEL_LEN = 3;
 
 typedef enum logic[IMM_SEL_LEN-1:0] {
