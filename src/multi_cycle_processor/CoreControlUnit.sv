@@ -1,6 +1,6 @@
 /***************************************************************************
 * Copyright (c) 2022 Hariesh Anbalagan
-* This code is licensed under MIT license (see LICENSE.txt for details)
+* SPDX-License-Identifier: GPL-3.0-only
 * 
 * Module: CoreControlUnit.sv
 *
